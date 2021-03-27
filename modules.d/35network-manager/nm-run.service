@@ -10,6 +10,9 @@ After=systemd-udev-settle.service
 Wants=network.target network-online.target
 Before=network.target network-online.target
 
+#do not require sysinit.target for root device cryptsetup
+DefaultDependencies=no
+
 #run before we try to mount anything from the dracut hooks
 Before=dracut-initqueue.service
 
