@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # This file is part of dracut.
 # SPDX-License-Identifier: GPL-2.0-or-later
 
@@ -17,7 +17,7 @@ check() {
 depends() {
 
     # This module has external dependency on other module(s).
-    echo systemd systemd-modules-load
+    echo systemd-modules-load
     # Return 0 to include the dependent module(s) in the initramfs.
     return 0
 
@@ -27,7 +27,7 @@ depends() {
 install() {
 
     inst_multiple -o \
-        "$sysctld"/*.conf \
+        "$sysctld/*.conf" \
         "$systemdsystemunitdir"/systemd-sysctl.service \
         "$systemdsystemunitdir"/sysinit.target.wants/systemd-sysctl.service \
         "$systemdutildir"/systemd-sysctl
@@ -36,9 +36,9 @@ install() {
     if [[ $hostonly ]]; then
         inst_multiple -H -o \
             /etc/sysctl.conf \
-            "$sysctldconfdir"/*.conf \
+            "$sysctlconfdir/*.conf" \
             "$systemdsystemconfdir"/systemd-sysctl.service \
-            "$systemdsystemconfdir"/systemd-sysctl.service.d/*.conf
+            "$systemdsystemconfdir/systemd-sysctl.service.d/*.conf"
     fi
 
     # Enable the systemd type service unit for sysctl.

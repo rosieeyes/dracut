@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # Mount kernel debug fs so debug tools can work.
 # memdebug=4 and memdebug=5 requires debug fs to be mounted.
 # And there is no need to umount it.
@@ -25,7 +25,7 @@ prepare_debugfs() {
     trace_base=$(get_trace_base)
     # old debugfs interface case.
     if ! [ -d "$trace_base/tracing" ]; then
-        mount none -t debugfs $trace_base
+        mount none -t debugfs "$trace_base"
     # new tracefs interface case.
     elif ! [ -f "$trace_base/tracing/trace" ]; then
         mount none -t tracefs "$trace_base/tracing"
@@ -65,4 +65,5 @@ fi
 sleep 1
 
 echo $PID > /run/memstrack.pid
+# bash specific - non posix
 disown

@@ -3,33 +3,28 @@
 # called by dracut
 installkernel() {
     local _blockfuncs='ahci_platform_get_resources|ata_scsi_ioctl|scsi_add_host|blk_cleanup_queue|register_mtd_blktrans|scsi_esp_register|register_virtio_device|usb_stor_disconnect|mmc_add_host|sdhci_add_host|scsi_add_host_with_dma'
-    local _hostonly_drvs
+    local -A _hostonly_drvs
 
     find_kernel_modules_external() {
-        local _OLDIFS
-        local external_pattern="^/"
+        local a
 
         [[ -f "$srcmods/modules.dep" ]] || return 0
 
-        _OLDIFS=$IFS
-        IFS=:
-        while read a rest; do
-            [[ $a =~ $external_pattern ]] || continue
-            printf "%s\n" "$a"
+        while IFS=: read -r a _ || [[ $a ]]; do
+            [[ $a =~ ^/ ]] && printf "%s\n" "$a"
         done < "$srcmods/modules.dep"
-        IFS=$_OLDIFS
     }
 
     record_block_dev_drv() {
-        for _mod in $(get_dev_module /dev/block/$1); do
-            [[ " $_hostonly_drvs " != *$_mod* ]] && _hostonly_drvs+=" $_mod"
+        for _mod in $(get_dev_module /dev/block/"$1"); do
+            _hostonly_drvs["$_mod"]="$_mod"
         done
-        [[ "$_hostonly_drvs" ]] && return 0
+        ((${#_hostonly_drvs[@]} > 0)) && return 0
         return 1
     }
 
     install_block_modules_strict() {
-        hostonly='' instmods $_hostonly_drvs
+        hostonly='' instmods "${_hostonly_drvs[@]}"
     }
 
     install_block_modules() {
@@ -48,8 +43,7 @@ installkernel() {
             ehci-hcd ehci-pci ehci-platform \
             ohci-hcd ohci-pci \
             uhci-hcd \
-            xhci-hcd xhci-pci xhci-plat-hcd \
-            ${NULL}
+            xhci-hcd xhci-pci xhci-plat-hcd
 
         hostonly=$(optional_hostonly) instmods \
             "=drivers/hid" \
@@ -59,7 +53,7 @@ installkernel() {
             "=drivers/pci/host" \
             "=drivers/pci/controller" \
             "=drivers/pinctrl" \
-            ${NULL}
+            "=drivers/watchdog"
 
         instmods \
             yenta_socket \
@@ -96,8 +90,7 @@ installkernel() {
                 "=drivers/usb/misc" \
                 "=drivers/usb/musb" \
                 "=drivers/usb/phy" \
-                "=drivers/scsi/hisi_sas" \
-                ${NULL}
+                "=drivers/scsi/hisi_sas"
         fi
 
         find_kernel_modules_external | instmods
@@ -134,6 +127,11 @@ installkernel() {
         [[ $arch == aarch64 ]] && arch=arm64
         hostonly='' instmods "=crypto"
         instmods "=arch/$arch/crypto" "=drivers/crypto"
+    fi
+
+    inst_multiple -o "$depmodd/*.conf"
+    if [[ $hostonly ]]; then
+        inst_multiple -H -o "$depmodconfdir/*.conf"
     fi
     :
 }

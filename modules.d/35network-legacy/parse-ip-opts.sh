@@ -48,7 +48,7 @@ fi
 # Check ip= lines
 # XXX Would be nice if we could errorcheck ip addresses here as well
 for p in $(getargs ip=); do
-    ip_to_var $p
+    ip_to_var "$p"
 
     # make first device specified the BOOTDEV
     if [ -n "$NEEDBOOTDEV" ] && [ -z "$BOOTDEV" ] && [ -n "$dev" ]; then
@@ -113,20 +113,22 @@ for p in $(getargs ip=); do
     fi
 
     if str_starts "$dev" "enx" && [ ${#dev} -eq 15 ]; then
+        # shellcheck disable=SC2003
         printf -- "ifname=%s:%s:%s:%s:%s:%s:%s\n" \
             "$dev" \
-            "${dev:3:2}" \
-            "${dev:5:2}" \
-            "${dev:7:2}" \
-            "${dev:9:2}" \
-            "${dev:11:2}" \
-            "${dev:13:2}" >> /etc/cmdline.d/80-enx.conf
+            "$(expr substr "$dev" 3 2)" \
+            "$(expr substr "$dev" 5 2)" \
+            "$(expr substr "$dev" 7 2)" \
+            "$(expr substr "$dev" 9 2)" \
+            "$(expr substr "$dev" 11 2)" \
+            "$(expr substr "$dev" 13 2)" \
+            >> /etc/cmdline.d/80-enx.conf
     fi
 done
 
 # put BOOTIF in IFACES to make sure it comes up
 if getargbool 1 "rd.bootif" && BOOTIF="$(getarg BOOTIF=)"; then
-    BOOTDEV=$(fix_bootif $BOOTIF)
+    BOOTDEV=$(fix_bootif "$BOOTIF")
     IFACES="$BOOTDEV $IFACES"
 fi
 
@@ -137,5 +139,5 @@ if [ -n "$BOOTDEV" ] && [ -n "$IFACES" ]; then
 fi
 
 # Store BOOTDEV and IFACES for later use
-[ -n "$BOOTDEV" ] && echo $BOOTDEV > /tmp/net.bootdev
-[ -n "$IFACES" ] && echo $IFACES > /tmp/net.ifaces
+[ -n "$BOOTDEV" ] && echo "$BOOTDEV" > /tmp/net.bootdev
+[ -n "$IFACES" ] && echo "$IFACES" > /tmp/net.ifaces

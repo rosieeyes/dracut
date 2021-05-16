@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # This file is part of dracut.
 # SPDX-License-Identifier: GPL-2.0-or-later
 
@@ -65,6 +65,8 @@ install() {
         Before=shutdown.target
         /^\[Socket\]/aRemoveOnStop=yes' \
         "$initdir$systemdsystemunitdir/dbus.socket"
+
+    $SYSTEMCTL -q --root "$initdir" enable dbus-broker.service
 
     # Install the hosts local user configurations if enabled.
     if [[ $hostonly ]]; then

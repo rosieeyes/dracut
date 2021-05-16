@@ -52,6 +52,7 @@ unset nroot
 incol2 /proc/devices nbd || modprobe nbd || die "nbdroot requested but kernel/initrd does not support nbd"
 
 # Done, all good!
+# shellcheck disable=SC2034
 rootok=1
 
 # Shut up init error check
@@ -59,3 +60,5 @@ if [ -z "$root" ]; then
     root=block:/dev/root
     # the device is created and waited for in ./nbdroot.sh
 fi
+
+echo 'nbd-client -check /dev/nbd0 > /dev/null 2>&1' > "$hookdir"/initqueue/finished/nbdroot.sh

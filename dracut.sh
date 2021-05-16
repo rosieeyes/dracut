@@ -1,9 +1,6 @@
 #!/bin/bash -p
 #
 # Generator script for a dracut initramfs
-# Tries to retain some degree of compatibility with the command line
-# of the various mkinitrd implementations out there
-#
 
 # Copyright 2005-2013 Red Hat, Inc.  All rights reserved.
 #
@@ -33,6 +30,7 @@ if ((BASH_VERSINFO[0] < 4)); then
 fi
 
 dracut_args=("$@")
+# shellcheck disable=SC2155
 readonly dracut_cmd=$(readlink -f "$0")
 
 set -o pipefail
@@ -850,7 +848,7 @@ if [[ $regenerate_all == "yes" ]]; then
     ((len = ${#dracut_args[@]}))
     for ((i = 0; i < len; i++)); do
         [[ ${dracut_args[$i]} == "--regenerate-all" ]] \
-            && unset "dracut_args[$i]"
+            && unset dracut_args["$i"]
     done
 
     cd "$dracutsysrootdir"/lib/modules || exit 1
@@ -939,6 +937,7 @@ export SYSTEMCTL=${SYSTEMCTL:-systemctl}
 
 # these options add to the stuff in the config file
 ((${#add_dracutmodules_l[@]})) && add_dracutmodules+=" ${add_dracutmodules_l[*]} "
+((${#omit_dracutmodules_l[@]})) && omit_dracutmodules+=" ${omit_dracutmodules_l[*]} "
 ((${#force_add_dracutmodules_l[@]})) && force_add_dracutmodules+=" ${force_add_dracutmodules_l[*]} "
 ((${#fscks_l[@]})) && fscks+=" ${fscks_l[*]} "
 ((${#add_fstab_l[@]})) && add_fstab+=" ${add_fstab_l[*]} "
@@ -948,7 +947,6 @@ export SYSTEMCTL=${SYSTEMCTL:-systemctl}
 
 # these options override the stuff in the config file
 ((${#dracutmodules_l[@]})) && dracutmodules="${dracutmodules_l[*]}"
-((${#omit_dracutmodules_l[@]})) && omit_dracutmodules="${omit_dracutmodules_l[*]}"
 ((${#filesystems_l[@]})) && filesystems="${filesystems_l[*]}"
 ((${#fw_dir_l[@]})) && fw_dir="${fw_dir_l[*]}"
 ((${#libdirs_l[@]})) && libdirs="${libdirs_l[*]}"
@@ -1114,6 +1112,7 @@ case "${drivers_dir}" in
         ;;
 esac
 
+# shellcheck disable=SC2155
 readonly TMPDIR="$(realpath -e "$tmpdir")"
 [ -d "$TMPDIR" ] || {
     printf "%s\n" "dracut: Invalid tmpdir '$tmpdir'." >&2
@@ -1125,11 +1124,16 @@ if findmnt --raw -n --target "$tmpdir" --output=options | grep -q noexec; then
     noexec=1
 fi
 
+# shellcheck disable=SC2155
 readonly DRACUT_TMPDIR="$(mktemp -p "$TMPDIR/" -d -t dracut.XXXXXX)"
 [ -d "$DRACUT_TMPDIR" ] || {
     printf "%s\n" "dracut: mktemp -p '$TMPDIR/' -d -t dracut.XXXXXX failed." >&2
     exit 1
 }
+
+# Cache file used to optimize get_maj_min()
+declare -x -r get_maj_min_cache_file="${DRACUT_TMPDIR}/majmin_cache"
+: > "$get_maj_min_cache_file"
 
 # clean up after ourselves no matter how we die.
 trap '
@@ -1274,6 +1278,7 @@ if [[ $no_kernel != yes ]] && [[ -d $srcmods ]]; then
             case "$_mod" in
                 *.ko.gz) kcompress=gzip ;;
                 *.ko.xz) kcompress=xz ;;
+                *.ko.zst) kcompress=zstd ;;
             esac
             if [[ $kcompress ]]; then
                 if ! command -v "$kcompress" &> /dev/null; then
@@ -1333,13 +1338,9 @@ if [[ ! $print_cmdline ]]; then
         esac
 
         if ! [[ -s $uefi_stub ]]; then
-            for uefi_stub in \
-                "$dracutsysrootdir${systemdutildir}/boot/efi/linux${EFI_MACHINE_TYPE_NAME}.efi.stub" \
-                "$dracutsysrootdir/usr/lib/gummiboot/linux${EFI_MACHINE_TYPE_NAME}.efi.stub"; do
-                [[ -s $uefi_stub ]] || continue
-                break
-            done
+            uefi_stub="$dracutsysrootdir${systemdutildir}/boot/efi/linux${EFI_MACHINE_TYPE_NAME}.efi.stub"
         fi
+
         if ! [[ -s $uefi_stub ]]; then
             dfatal "Can't find a uefi stub '$uefi_stub' to create a UEFI executable"
             exit 1
@@ -1422,8 +1423,10 @@ for line in "${fstab_lines[@]}"; do
     esac
     [ -z "$dev" ] && dwarn "Bad fstab entry $*" && continue
     if [[ $3 == btrfs ]]; then
-        for i in $(btrfs_devs "$2"); do
-            push_host_devs "$i"
+        for mp in $(findmnt --source "$1" -o TARGET -n); do
+            for i in $(btrfs_devs "$mp"); do
+                push_host_devs "$i"
+            done
         done
     fi
     push_host_devs "$dev"
@@ -1643,10 +1646,25 @@ if ! [[ -d $dracutsysrootdir$udevdir ]]; then
     [[ -e $dracutsysrootdir/usr/lib/udev/ata_id ]] && udevdir=/usr/lib/udev
 fi
 
-[[ -d $dracutsysrootdir$sysctl ]] \
-    || sysctl=$(pkg-config systemd --variable=sysctl 2> /dev/null)
+[[ -d $dracutsysrootdir$udevconfdir ]] \
+    || udevconfdir=$(pkg-config udev --variable=udevconfdir 2> /dev/null)
 
-[[ -d $dracutsysrootdir$sysctl ]] || sysctl=/usr/lib/sysctl.d
+[[ -d $dracutsysrootdir$udevconfdir ]] || udevconfdir=/etc/udev
+
+[[ -d $dracutsysrootdir$udevrulesdir ]] \
+    || udevrulesdir=$(pkg-config udev --variable=udevrulesdir 2> /dev/null)
+
+[[ -d $dracutsysrootdir$udevrulesdir ]] || udevrulesdir=${udevdir}/rules.d
+
+[[ -d $dracutsysrootdir$udevrulesconfdir ]] \
+    || udevrulesconfdir=$(pkg-config udev --variable=udevrulesconfdir 2> /dev/null)
+
+[[ -d $dracutsysrootdir$udevrulesconfdir ]] || udevrulesconfdir=${udevconfdir}/rules.d
+
+[[ -d $dracutsysrootdir$sysctld ]] \
+    || sysctld=$(pkg-config systemd --variable=sysctld 2> /dev/null)
+
+[[ -d $dracutsysrootdir$sysctld ]] || sysctld=/usr/lib/sysctl.d
 
 [[ -d $dracutsysrootdir$sysctlconfdir ]] \
     || sysctlconfdir=$(pkg-config systemd --variable=sysctlconfdir 2> /dev/null)
@@ -1667,6 +1685,16 @@ fi
     || systemdcatalog=$(pkg-config systemd --variable=systemdcatalog 2> /dev/null)
 
 [[ -d $dracutsysrootdir$systemdcatalog ]] || systemdcatalog=${systemdutildir}/catalog
+
+[[ -d $dracutsysrootdir$modulesload ]] \
+    || modulesload=$(pkg-config systemd --variable=modulesload 2> /dev/null)
+
+[[ -d $dracutsysrootdir$modulesload ]] || modulesload=/usr/lib/modules-load.d
+
+[[ -d $dracutsysrootdir$modulesloadconfdir ]] \
+    || modulesloadconfdir=$(pkg-config systemd --variable=modulesloadconfdir 2> /dev/null)
+
+[[ -d $dracutsysrootdir$modulesloadconfdir ]] || modulesloadconfdir=/etc/modules-load.d
 
 [[ -d $dracutsysrootdir$systemdnetwork ]] \
     || systemdnetwork=$(pkg-config systemd --variable=systemdnetwork 2> /dev/null)
@@ -1736,6 +1764,21 @@ if ! [[ -d $dracutsysrootdir$tmpfilesdir ]]; then
     [[ -d $dracutsysrootdir/usr/lib/tmpfiles.d ]] && tmpfilesdir=/usr/lib/tmpfiles.d
 fi
 
+[[ -d $dracutsysrootdir$tmpfilesconfdir ]] \
+    || tmpfilesconfdir=$(pkg-config systemd --variable=tmpfilesconfdir 2> /dev/null)
+
+[[ -d $dracutsysrootdir$tmpfilesconfdir ]] || tmpfilesconfdir=/etc/tmpfiles.d
+
+[[ -d $dracutsysrootdir$depmodd ]] \
+    || sysctld=$(pkg-config libkmod --variable=depmodd 2> /dev/null)
+
+[[ -d $dracutsysrootdir$depmodd ]] || depmodd=/usr/lib/depmod.d
+
+[[ -d $dracutsysrootdir$depmodconfdir ]] \
+    || sysctlconfdir=$(pkg-config libkmod --variable=depmodconfdir 2> /dev/null)
+
+[[ -d $dracutsysrootdir$depmodconfdir ]] || depmodconfdir=/etc/depmod.d
+
 export initdir dracutbasedir \
     dracutmodules force_add_dracutmodules add_dracutmodules omit_dracutmodules \
     mods_to_load \
@@ -1744,15 +1787,16 @@ export initdir dracutbasedir \
     use_fstab fstab_lines libdirs fscks nofscks ro_mnt \
     stdloglvl sysloglvl fileloglvl kmsgloglvl logfile \
     debug host_fs_types host_devs swap_devs sshkey add_fstab \
-    DRACUT_VERSION udevdir prefix filesystems drivers \
-    dbus dbusconfdir dbusinterfaces dbusinterfacesconfdir \
-    dbusservices dbusservicesconfdir dbussession dbussessionconfdir \
-    dbussystem dbussystemconfdir dbussystemservices dbussystemservicesconfdir \
-    environment environmentconfdir sysctl sysctlconfdir sysusers sysusersconfdir \
+    DRACUT_VERSION udevdir udevconfdir udevrulesdir udevrulesconfdir \
+    prefix filesystems drivers dbus dbusconfdir dbusinterfaces \
+    dbusinterfacesconfdir dbusservices dbusservicesconfdir dbussession \
+    dbussessionconfdir dbussystem dbussystemconfdir dbussystemservices \
+    dbussystemservicesconfdir environment environmentconfdir modulesload \
+    modulesloadconfdir sysctl sysctlconfdir sysusers sysusersconfdir \
     systemdutildir systemdutilconfdir systemdcatalog systemdntpunits \
     systemdntpunitsconfdir systemdsystemunitdir systemdsystemconfdir \
-    hostonly_cmdline loginstall \
-    tmpfilesdir
+    hostonly_cmdline loginstall tmpfilesdir tmpfilesconfdir depmodd \
+    depmodconfdir
 
 mods_to_load=""
 # check all our modules to see if they should be sourced.
@@ -1794,6 +1838,7 @@ fi
 
 if [[ $prefix ]]; then
     for d in bin etc lib sbin tmp usr var $libdirs; do
+        d=${d#/}
         [[ $d == */* ]] && continue
         ln -sfn "${prefix#/}/${d#/}" "$initdir/$d"
     done
@@ -1801,6 +1846,7 @@ fi
 
 if [[ $kernel_only != yes ]]; then
     for d in usr usr/bin usr/sbin bin etc lib sbin tmp var var/tmp $libdirs; do
+        d=${d#/}
         [[ -e "${initdir}${prefix}/$d" ]] && continue
         if [ -L "/$d" ]; then
             inst_symlink "/$d" "${prefix}/$d"
@@ -1959,7 +2005,7 @@ if [[ $kernel_only != yes ]]; then
         if [ -z "${fstab_field[1]}" ]; then
             # Determine device and mount options from current system
             mountpoint -q "${fstab_field[0]}" || derror "${fstab_field[0]} is not a mount point!"
-            read -r -a fstab_field <<< "$(findmnt --raw -n --target "${fstab_field[0]}" --output=source,target,fstype,options)"
+            read -r -a fstab_field < <(findmnt --raw -n --target "${fstab_field[0]}" --output=source,target,fstype,options)
             dinfo "Line for ${fstab_field[1]}: ${fstab_field[*]}"
         else
             # Use default options

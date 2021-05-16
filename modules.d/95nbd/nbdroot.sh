@@ -14,6 +14,7 @@ PATH=/usr/sbin:/usr/bin:/sbin:/bin
 [ -z "$3" ] && exit 1
 
 # root is in the form root=nbd:srv:port[:fstype[:rootflags[:nbdopts]]]
+# shellcheck disable=SC2034
 netif="$1"
 nroot="$2"
 NEWROOT="$3"
@@ -89,11 +90,7 @@ fsopts=${fsopts:+$fsopts,}${nbdrw}
 i=0
 while [ ! -b /dev/nbd0 ]; do
     [ $i -ge 20 ] && exit 1
-    if [ $UDEVVERSION -ge 143 ]; then
-        udevadm settle --exit-if-exists=/dev/nbd0
-    else
-        sleep 0.1
-    fi
+    udevadm settle --exit-if-exists=/dev/nbd0
     i=$((i + 1))
 done
 
@@ -111,28 +108,30 @@ if [ "$root" = "block:/dev/root" -o "$root" = "dhcp" ]; then
 
         printf '/bin/mount %s\n' \
             "$NEWROOT" \
-            > $hookdir/mount/01-$$-nbd.sh
+            > "$hookdir"/mount/01-$$-nbd.sh
+    else
+        mkdir -p /run/systemd/system/sysroot.mount.d
+        cat << EOF > /run/systemd/system/sysroot.mount.d/dhcp.conf
+[Mount]
+Where=/sysroot
+What=/dev/root
+Type=$nbdfstype
+Options=$fsopts
+EOF
+        systemctl --no-block daemon-reload
     fi
     # if we're on systemd, use the nbd-generator script
     # to create the /sysroot mount.
 fi
 
-# supported since nbd 3.8 via 77e97612
-if strstr "$(nbd-client --help 2>&1)" "systemd-mark"; then
-    preopts="-systemd-mark $preopts"
-fi
-
-if [ "$nbdport" -gt 0 ] 2> /dev/null; then
-    nbdport="$nbdport"
-else
+if ! [ "$nbdport" -gt 0 ] 2> /dev/null; then
     nbdport="-name $nbdport"
 fi
 
-nbd-client -check /dev/nbd0 > /dev/null \
-    || nbd-client "$nbdserver" $nbdport /dev/nbd0 $preopts $opts || exit 1
+if ! nbd-client -check /dev/nbd0 > /dev/null; then
+    # shellcheck disable=SC2086
+    nbd-client -p -systemd-mark "$nbdserver" $nbdport /dev/nbd0 $opts || exit 1
+fi
 
-# NBD doesn't emit uevents when it gets connected, so kick it
-echo change > /sys/block/nbd0/uevent
-udevadm settle
 need_shutdown
 exit 0

@@ -49,6 +49,7 @@ inst_sshenv() {
             # Copy customized UserKnowHostsFile
             elif [[ $key == "UserKnownHostsFile" ]]; then
                 # Make sure that ~/foo will be copied as /root/foo in kdump's initramfs
+                # shellcheck disable=SC2088
                 if str_starts "$val" "~/"; then
                     val="/root/${val#"~/"}"
                 fi
@@ -68,8 +69,8 @@ install() {
     inst_sshenv
 
     _nsslibs=$(
-        sed -e 's/#.*//; s/^[^:]*://; s/\[[^]]*\]//' \
-            "$dracutsysrootdir"/etc/nsswitch.conf \
+        cat "$dracutsysrootdir"/{,usr/}etc/nsswitch.conf 2> /dev/null \
+            | sed -e 's/#.*//; s/^[^:]*://; s/\[[^]]*\]//' \
             | tr -s '[:space:]' '\n' | sort -u | tr -s '[:space:]' '|'
     )
     _nsslibs=${_nsslibs#|}

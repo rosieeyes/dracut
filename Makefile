@@ -11,6 +11,7 @@ endif
 
 HAVE_SHELLCHECK ?= $(shell which shellcheck >/dev/null 2>&1 && echo yes)
 HAVE_SHFMT ?= $(shell which shfmt >/dev/null  2>&1 && echo yes)
+HAVE_RPMBUILD ?= $(shell which rpmbuild >/dev/null  2>&1 && echo yes)
 
 -include Makefile.inc
 
@@ -27,18 +28,16 @@ CFLAGS ?= -O2 -g -Wall -std=gnu99 -D_FILE_OFFSET_BITS=64 -Wformat -Werror=format
 bashcompletiondir ?= ${datadir}/bash-completion/completions
 pkgconfigdatadir ?= $(datadir)/pkgconfig
 
-man1pages = lsinitrd.1
+man1pages = man/lsinitrd.1
 
-man5pages = dracut.conf.5
+man5pages = man/dracut.conf.5
 
-man7pages = dracut.cmdline.7 \
-            dracut.bootup.7 \
-            dracut.modules.7
+man7pages = man/dracut.cmdline.7 \
+            man/dracut.bootup.7 \
+            man/dracut.modules.7
 
-man8pages = dracut.8 \
-            dracut-catimages.8 \
-            mkinitrd.8 \
-            mkinitrd-suse.8 \
+man8pages = man/dracut.8 \
+            man/dracut-catimages.8 \
             modules.d/98dracut-systemd/dracut-cmdline.service.8 \
             modules.d/98dracut-systemd/dracut-initqueue.service.8 \
             modules.d/98dracut-systemd/dracut-mount.service.8 \
@@ -52,50 +51,50 @@ manpages = $(man1pages) $(man5pages) $(man7pages) $(man8pages)
 
 .PHONY: install clean archive rpm srpm testimage test all check AUTHORS CONTRIBUTORS doc dracut-version.sh
 
-all: dracut-version.sh dracut.pc dracut-install skipcpio/skipcpio dracut-util
+all: dracut-version.sh dracut.pc dracut-install src/skipcpio/skipcpio dracut-util
 
 %.o : %.c
 	$(CC) -c $(CFLAGS) $(CPPFLAGS) $(KMOD_CFLAGS) $< -o $@
 
 DRACUT_INSTALL_OBJECTS = \
-        install/dracut-install.o \
-        install/hashmap.o\
-        install/log.o \
-        install/strv.o \
-        install/util.o
+        src/install/dracut-install.o \
+        src/install/hashmap.o\
+        src/install/log.o \
+        src/install/strv.o \
+        src/install/util.o
 
 # deps generated with gcc -MM
-install/dracut-install.o: install/dracut-install.c install/log.h install/macro.h \
-	install/hashmap.h install/util.h
-install/hashmap.o: install/hashmap.c install/util.h install/macro.h install/log.h \
-	install/hashmap.h
-install/log.o: install/log.c install/log.h install/macro.h install/util.h
-install/util.o: install/util.c install/util.h install/macro.h install/log.h
-install/strv.o: install/strv.c install/strv.h install/util.h install/macro.h install/log.h
+src/install/dracut-install.o: src/install/dracut-install.c src/install/log.h src/install/macro.h \
+	src/install/hashmap.h src/install/util.h
+src/install/hashmap.o: src/install/hashmap.c src/install/util.h src/install/macro.h src/install/log.h \
+	src/install/hashmap.h
+src/install/log.o: src/install/log.c src/install/log.h src/install/macro.h src/install/util.h
+src/install/util.o: src/install/util.c src/install/util.h src/install/macro.h src/install/log.h
+src/install/strv.o: src/install/strv.c src/install/strv.h src/install/util.h src/install/macro.h src/install/log.h
 
-install/dracut-install: $(DRACUT_INSTALL_OBJECTS)
+src/install/dracut-install: $(DRACUT_INSTALL_OBJECTS)
 	$(CC) $(LDFLAGS) -o $@ $(DRACUT_INSTALL_OBJECTS) $(LDLIBS) $(FTS_LIBS) $(KMOD_LIBS)
 
-logtee: logtee.c
+logtee: src/logtee/logtee.c
 	$(CC) $(LDFLAGS) -o $@ $<
 
-dracut-install: install/dracut-install
+dracut-install: src/install/dracut-install
 	ln -fs $< $@
 
-SKIPCPIO_OBJECTS = skipcpio/skipcpio.o
-skipcpio/skipcpio.o: skipcpio/skipcpio.c
+SKIPCPIO_OBJECTS = src/skipcpio/skipcpio.o
+skipcpio/skipcpio.o: src/skipcpio/skipcpio.c
 skipcpio/skipcpio: $(SKIPCPIO_OBJECTS)
 
-UTIL_OBJECTS = util/util.o
-util/util.o: util/util.c
+UTIL_OBJECTS = src/util/util.o
+util/util.o: src/util/util.c
 util/util: $(UTIL_OBJECTS)
 
-dracut-util: util/util
+dracut-util: src/util/util
 	cp -a $< $@
 
 .PHONY: indent-c
 indent-c:
-	astyle -n --quiet --options=.astylerc $(wildcard *.[ch] */*.[ch])
+	astyle -n --quiet --options=.astylerc $(wildcard *.[ch] */*.[ch] src/*/*.[ch])
 
 .PHONY: indent
 indent: indent-c
@@ -117,17 +116,18 @@ endif
 	@rm -f -- "$@"
 	asciidoc -a "version=$(DRACUT_FULL_VERSION)" -d manpage -b docbook -o "$@" $<
 
-dracut.8: dracut.usage.asc dracut.8.asc
+dracut.8: man/dracut.8.asc \
+	man/dracut.usage.asc
 
-dracut.html: dracut.asc $(manpages) dracut.css dracut.usage.asc
+dracut.html: man/dracut.asc $(manpages) docs/dracut.css man/dracut.usage.asc
 	@rm -f -- dracut.xml
 	asciidoc -a "mainversion=$(DRACUT_MAIN_VERSION)" \
 		-a "version=$(DRACUT_FULL_VERSION)" \
 		-a numbered \
-		-d book -b docbook -o dracut.xml dracut.asc
+		-d book -b docbook -o dracut.xml man/dracut.asc
 	@rm -f -- dracut.html
 	xsltproc -o dracut.html --xinclude -nonet \
-		--stringparam custom.css.source dracut.css \
+		--stringparam custom.css.source docs/dracut.css \
 		--stringparam generate.css.header 1 \
 		http://docbook.sourceforge.net/release/xsl/current/xhtml/docbook.xsl dracut.xml
 	@rm -f -- dracut.xml
@@ -148,7 +148,6 @@ install: all
 	mkdir -p $(DESTDIR)$(mandir)/man1 $(DESTDIR)$(mandir)/man5 $(DESTDIR)$(mandir)/man7 $(DESTDIR)$(mandir)/man8
 	install -m 0755 dracut.sh $(DESTDIR)$(bindir)/dracut
 	install -m 0755 dracut-catimages.sh $(DESTDIR)$(bindir)/dracut-catimages
-	install -m 0755 mkinitrd-dracut.sh $(DESTDIR)$(bindir)/mkinitrd
 	install -m 0755 lsinitrd.sh $(DESTDIR)$(bindir)/lsinitrd
 	install -m 0644 dracut.conf $(DESTDIR)$(sysconfdir)/dracut.conf
 	mkdir -p $(DESTDIR)$(sysconfdir)/dracut.conf.d
@@ -188,21 +187,21 @@ endif
 			$(DESTDIR)$(systemdsystemunitdir)/initrd.target.wants/$$i; \
 		done \
 	fi
-	if [ -f install/dracut-install ]; then \
-		install -m 0755 install/dracut-install $(DESTDIR)$(pkglibdir)/dracut-install; \
+	if [ -f src/install/dracut-install ]; then \
+		install -m 0755 src/install/dracut-install $(DESTDIR)$(pkglibdir)/dracut-install; \
 	fi
-	if [ -f skipcpio/skipcpio ]; then \
-		install -m 0755 skipcpio/skipcpio $(DESTDIR)$(pkglibdir)/skipcpio; \
+	if [ -f src/skipcpio/skipcpio ]; then \
+		install -m 0755 src/skipcpio/skipcpio $(DESTDIR)$(pkglibdir)/skipcpio; \
 	fi
 	if [ -f dracut-util ]; then \
 		install -m 0755 dracut-util $(DESTDIR)$(pkglibdir)/dracut-util; \
 	fi
 	mkdir -p $(DESTDIR)${prefix}/lib/kernel/install.d
-	install -m 0755 50-dracut.install $(DESTDIR)${prefix}/lib/kernel/install.d/50-dracut.install
-	install -m 0755 51-dracut-rescue.install $(DESTDIR)${prefix}/lib/kernel/install.d/51-dracut-rescue.install
+	install -m 0755 install.d/50-dracut.install $(DESTDIR)${prefix}/lib/kernel/install.d/50-dracut.install
+	install -m 0755 install.d/51-dracut-rescue.install $(DESTDIR)${prefix}/lib/kernel/install.d/51-dracut-rescue.install
 	mkdir -p $(DESTDIR)${bashcompletiondir}
-	install -m 0644 dracut-bash-completion.sh $(DESTDIR)${bashcompletiondir}/dracut
-	install -m 0644 lsinitrd-bash-completion.sh $(DESTDIR)${bashcompletiondir}/lsinitrd
+	install -m 0644 shell-completion/bash/dracut $(DESTDIR)${bashcompletiondir}/dracut
+	install -m 0644 shell-completion/bash/lsinitrd $(DESTDIR)${bashcompletiondir}/lsinitrd
 	mkdir -p $(DESTDIR)${pkgconfigdatadir}
 	install -m 0644 dracut.pc $(DESTDIR)${pkgconfigdatadir}/dracut.pc
 
@@ -218,7 +217,7 @@ clean:
 	$(RM) test-*.img
 	$(RM) dracut-*.rpm dracut-*.tar.bz2 dracut-*.tar.xz
 	$(RM) dracut-version.sh
-	$(RM) dracut-install install/dracut-install $(DRACUT_INSTALL_OBJECTS)
+	$(RM) dracut-install src/install/dracut-install $(DRACUT_INSTALL_OBJECTS)
 	$(RM) skipcpio/skipcpio $(SKIPCPIO_OBJECTS)
 	$(RM) dracut-util util/util $(UTIL_OBJECTS)
 	$(RM) $(manpages) dracut.html
@@ -237,10 +236,11 @@ dracut-$(DRACUT_MAIN_VERSION).tar.xz: doc syncheck
 	xz -9 dracut-$(DRACUT_MAIN_VERSION).tar
 	rm -f -- dracut-$(DRACUT_MAIN_VERSION).tar
 
+ifeq ($(HAVE_RPMBUILD),yes)
 rpm: dracut-$(DRACUT_MAIN_VERSION).tar.xz syncheck
 	rpmbuild=$$(mktemp -d -p /var/tmp rpmbuild-dracut.XXXXXX); src=$$(pwd); \
 	cp dracut-$(DRACUT_MAIN_VERSION).tar.xz "$$rpmbuild"; \
-	LC_MESSAGES=C $$src/git2spec.pl $(DRACUT_MAIN_VERSION) "$$rpmbuild" < dracut.spec > $$rpmbuild/dracut.spec; \
+	LC_MESSAGES=C $$src/tools/git2spec.pl $(DRACUT_MAIN_VERSION) "$$rpmbuild" < pkgbuild/dracut.spec > $$rpmbuild/dracut.spec; \
 	(cd "$$rpmbuild"; \
 	wget https://www.gnu.org/licenses/lgpl-2.1.txt; \
 	rpmbuild --define "_topdir $$PWD" --define "_sourcedir $$PWD" \
@@ -251,13 +251,18 @@ rpm: dracut-$(DRACUT_MAIN_VERSION).tar.xz syncheck
 srpm: dracut-$(DRACUT_MAIN_VERSION).tar.xz syncheck
 	rpmbuild=$$(mktemp -d -t rpmbuild-dracut.XXXXXX); src=$$(pwd); \
 	cp dracut-$(DRACUT_MAIN_VERSION).tar.xz "$$rpmbuild"; \
-	LC_MESSAGES=C $$src/git2spec.pl $(DRACUT_MAIN_VERSION) "$$rpmbuild" < dracut.spec > $$rpmbuild/dracut.spec; \
+	LC_MESSAGES=C $$src/tools/git2spec.pl $(DRACUT_MAIN_VERSION) "$$rpmbuild" < pkgbuild/dracut.spec > $$rpmbuild/dracut.spec; \
 	(cd "$$rpmbuild"; \
 	[ -f $$src/lgpl-2.1.txt ] && cp $$src/lgpl-2.1.txt . || wget https://www.gnu.org/licenses/lgpl-2.1.txt; \
 	rpmbuild --define "_topdir $$PWD" --define "_sourcedir $$PWD" \
 	        --define "_specdir $$PWD" --define "_srcrpmdir $$PWD" \
 		--define "_rpmdir $$PWD" -bs dracut.spec; ) && \
 	( mv "$$rpmbuild"/*.src.rpm $(DESTDIR).; rm -fr -- "$$rpmbuild"; ls $(DESTDIR)*.rpm )
+else
+.PHONY: rpm srpm
+rpm: syncheck
+srpm: syncheck
+endif
 
 syncheck:
 	@ret=0;for i in dracut-initramfs-restore.sh modules.d/*/*.sh; do \
@@ -267,8 +272,7 @@ syncheck:
 		[ $$V ] && echo "checking for [[: $$i"; if grep -Fq '[[ ' "$$i" ; then ret=$$(($$ret+1)); echo "$$i contains [["; fi; \
 		[ $$V ] && echo "checking for echo -n: $$i"; if grep -Fq 'echo -n ' "$$i" ; then ret=$$(($$ret+1)); echo "$$i contains echo -n"; fi \
 	done;exit $$ret
-	@ret=0;for i in *.sh mkinitrd-dracut.sh modules.d/*/*.sh \
-	                modules.d/*/module-setup.sh; do \
+	@ret=0;for i in *.sh modules.d/*/*.sh modules.d/*/module-setup.sh; do \
 		[ $$V ] && echo "bash syntax check: $$i"; bash -n "$$i" ; ret=$$(($$ret+$$?)); \
 	done;exit $$ret
 ifeq ($(HAVE_SHELLCHECK),yes)

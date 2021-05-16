@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # This file is part of dracut.
 # SPDX-License-Identifier: GPL-2.0-or-later
 
@@ -6,8 +6,10 @@
 check() {
 
     # If the binary(s) requirements are not fulfilled the module can't be installed
-    require_binaries coredumpctl || return 1
-    require_binaries "$systemdutildir"/systemd-coredump || return 1
+    require_binaries \
+        coredumpctl \
+        "$systemdutildir"/systemd-coredump \
+        || return 1
 
     # Return 255 to only include the module, if another module requires it.
     return 255
@@ -18,8 +20,8 @@ check() {
 depends() {
 
     # This module has external dependency on the systemd module.
-    echo systemd systemd-journald systemd-sysctl
-    # Return 0 to include the dependent systemd module in the initramfs.
+    echo systemd-journald systemd-sysctl
+    # Return 0 to include the dependent module(s) in the initramfs.
     return 0
 
 }
@@ -41,11 +43,11 @@ install() {
     if [[ $hostonly ]]; then
         inst_multiple -H -o \
             "$systemdutilconfdir"/coredump.conf \
-            "$systemdsystemconfdir"/coredump.conf.d/*.conf \
+            "$systemdsystemconfdir/coredump.conf.d/*.conf" \
             "$systemdsystemconfdir"/systemd-coredump.socket \
-            "$systemdsystemconfdir"/systemd-coredump.socket.d/*.conf \
+            "$systemdsystemconfdir/systemd-coredump.socket.d/*.conf" \
             "$systemdsystemconfdir"/systemd-coredump@.service \
-            "$systemdsystemconfdir"/systemd-coredump@.service.d/*.conf \
+            "$systemdsystemconfdir/systemd-coredump@.service.d/*.conf" \
             "$systemdsystemconfdir"/sockets.target.wants/systemd-coredump.socket
     fi
 }
